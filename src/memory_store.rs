@@ -1,6 +1,8 @@
 use crate::{async_trait, log, Result, Session, SessionStore};
-use async_lock::RwLock;
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::HashMap,
+    sync::{Arc, RwLock},
+};
 
 /// # in-memory session store
 /// Because there is no external
@@ -21,7 +23,7 @@ impl SessionStore for MemoryStore {
         Ok(self
             .inner
             .read()
-            .await
+            .expect("RwLock poisoned")
             .get(&id)
             .cloned()
             .and_then(Session::validate))
@@ -31,7 +33,7 @@ impl SessionStore for MemoryStore {
         log::trace!("storing session by id `{}`", session.id());
         self.inner
             .write()
-            .await
+            .expect("RwLock poisoned")
             .insert(session.id().to_string(), session.clone());
 
         session.reset_data_changed();
@@ -40,13 +42,16 @@ impl SessionStore for MemoryStore {
 
     async fn destroy_session(&self, session: Session) -> Result {
         log::trace!("destroying session by id `{}`", session.id());
-        self.inner.write().await.remove(session.id());
+        self.inner
+            .write()
+            .expect("RwLock poisoned")
+            .remove(session.id());
         Ok(())
     }
 
     async fn clear_store(&self) -> Result {
         log::trace!("clearing memory store");
-        self.inner.write().await.clear();
+        self.inner.write().expect("RwLock poisoned").clear();
         Ok(())
     }
 }
@@ -67,7 +72,7 @@ impl MemoryStore {
         let ids_to_delete: Vec<_> = self
             .inner
             .read()
-            .await
+            .expect("RwLock poisoned")
             .values()
             .filter_map(|session| {
                 if session.is_expired() {
@@ -80,7 +85,7 @@ impl MemoryStore {
 
         log::trace!("found {} expired sessions", ids_to_delete.len());
         for id in ids_to_delete {
-            self.inner.write().await.remove(&id);
+            self.inner.write().expect("RwLock poisoned").remove(&id);
         }
         Ok(())
     }
@@ -97,7 +102,7 @@ impl MemoryStore {
     /// # Ok(()) }) }
     /// ```
     pub async fn count(&self) -> usize {
-        let data = self.inner.read().await;
+        let data = self.inner.read().expect("RwLock poisoned");
         data.len()
     }
 }
